@@ -26,12 +26,29 @@ app.use(
   })
 );
 
-// CORS whitelist - only origins listed in CLIENT_URL (comma separated) are allowed.
+// Decide whether a browser origin may call the API.
+// Allowed: no-origin (server-to-server / tools), any origin listed in
+// CLIENT_URL, any localhost/127.0.0.1 (so local dev works against the deployed
+// API), and any *.vercel.app preview/production domain (so Vercel works too).
+function isAllowedOrigin(origin) {
+  if (!origin) return true;
+  if (env.clientUrls.includes(origin)) return true;
+  try {
+    const { hostname, protocol } = new URL(origin);
+    if (['localhost', '127.0.0.1', '0.0.0.0'].includes(hostname)) return true;
+    if (hostname.endsWith('.vercel.app')) return true;
+    // In development, allow any http origin (e.g. LAN IP on a phone).
+    if (!env.isProd && protocol.startsWith('http')) return true;
+  } catch {
+    return false;
+  }
+  return false;
+}
+
 app.use(
   cors({
     origin(origin, callback) {
-      // Allow same-origin / tools (no origin header) and any whitelisted origin.
-      if (!origin || env.clientUrls.includes(origin)) return callback(null, true);
+      if (isAllowedOrigin(origin)) return callback(null, true);
       return callback(ApiError.forbidden(`CORS blocked for origin: ${origin}`));
     },
     credentials: true,
