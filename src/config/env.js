@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import dotenv from 'dotenv';
+import { logger } from '../utils/logger.js';
 
 dotenv.config();
 
@@ -76,6 +77,27 @@ export const features = {
   nidEncryptionConfigured:
     !isMissing(process.env.NID_ENCRYPTION_KEY) && process.env.NID_ENCRYPTION_KEY.length === 64,
 };
+
+/**
+ * In production, refuse to start if required secrets are missing - fail fast
+ * rather than silently running a degraded/demo server.
+ */
+export function assertProductionEnv() {
+  if (!env.isProd) return;
+  const problems = [];
+  if (!features.mongoConfigured) problems.push('MONGO_URI');
+  if (!features.nidEncryptionConfigured) problems.push('NID_ENCRYPTION_KEY');
+  if (!env.jwtSecret || env.jwtSecret === 'ghorkaj-dev-secret-change-me') {
+    problems.push('JWT_SECRET (must not be the default)');
+  }
+  if (!env.clientUrls.length) problems.push('CLIENT_URL');
+
+  if (problems.length) {
+    const message = `Missing/invalid production env vars: ${problems.join(', ')}`;
+    logger.error(message);
+    throw new Error(message);
+  }
+}
 
 /** Print a friendly startup report about what is / is not configured yet. */
 export function logStartupReport(logger) {

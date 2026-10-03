@@ -17,7 +17,7 @@ import { createCustomToken, isFirebaseReady } from '../config/firebase.js';
 export async function registerUser(req, res, next) {
   try {
     // A JSON body arrives as text fields; multipart arrives in req.body too.
-    const { name, email, address, password, role, nidNumber, consent } = req.body;
+    const { name, email, address, password, role, nidNumber, consent, referralCode } = req.body;
 
     const agreed = consent === true || consent === 'true';
     if (!agreed) {
@@ -63,6 +63,7 @@ export async function registerUser(req, res, next) {
       address: String(address).trim(),
       role: SELF_REGISTER_ROLES.includes(role) ? role : 'user',
       referralCode: User.generateReferralCode(),
+      referredBy: null,
       photoUrl: photo ? savePhoto(photo) : '',
       nid: {
         numberEncrypted: encryptNid(String(nidNumber).trim()),
@@ -72,13 +73,29 @@ export async function registerUser(req, res, next) {
         status: 'pending',
       },
     });
+
+    // Referral: if a valid code is provided, link it and reward both sides
+    // (1 free unlock credit each). Best-effort - never blocks registration.
+    let referrer = null;
+    if (referralCode && String(referralCode).trim()) {
+      referrer = await User.findOne({ referralCode: String(referralCode).trim().toUpperCase() });
+      if (referrer) {
+        user.referredBy = referrer.referralCode;
+        user.credits = (user.credits || 0) + 1;
+      }
+    }
+
     await user.setPassword(password);
     await user.save();
+
+    if (referrer) {
+      await User.updateOne({ _id: referrer._id }, { $inc: { credits: 1 } });
+    }
 
     return sendSuccess(res, {
       status: 201,
       message: 'Registration successful. Please login.',
-      data: { user: publicUser(user) },
+      data: { user: publicUser(user), referralApplied: Boolean(referrer) },
     });
   } catch (err) {
     if (err?.code === 11000) {

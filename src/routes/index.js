@@ -11,6 +11,7 @@ import requestRoutes from './request.routes.js';
 import reportRoutes from './report.routes.js';
 import categoryRoutes from './category.routes.js';
 import paymentRoutes from './payment.routes.js';
+import favoriteRoutes from './favorite.routes.js';
 import { isDbConnected } from '../config/db.js';
 import { isFirebaseReady } from '../config/firebase.js';
 
@@ -62,5 +63,6 @@ router.use('/requests', requestRoutes);
 router.use('/reports', reportRoutes);
 router.use('/categories', categoryRoutes);
 router.use('/payments', paymentRoutes);
+router.use('/favorites', favoriteRoutes);
 
 export default router;

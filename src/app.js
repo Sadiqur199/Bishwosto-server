@@ -14,10 +14,15 @@ const app = express();
 // Behind a proxy (Render/Railway) so rate limiting sees the real client IP.
 if (env.isProd) app.set('trust proxy', 1);
 
+// Disable the X-Powered-By header (minor fingerprinting hardening).
+app.disable('x-powered-by');
+
 // Security headers. crossOriginResourcePolicy is relaxed so profile photos load in the client.
 app.use(
   helmet({
     crossOriginResourcePolicy: { policy: 'cross-origin' },
+    // HSTS only matters over HTTPS (production).
+    hsts: env.isProd ? { maxAge: 15552000, includeSubDomains: true } : false,
   })
 );
 
@@ -33,8 +38,9 @@ app.use(
   })
 );
 
+// Body size limits keep large/abusive payloads out.
 app.use(express.json({ limit: '1mb' }));
-app.use(express.urlencoded({ extended: true }));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
 if (!env.isProd) app.use(morgan('dev'));
 
