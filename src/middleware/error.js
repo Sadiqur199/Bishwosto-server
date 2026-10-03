@@ -11,8 +11,16 @@ export function notFound(req, _res, next) {
 export function errorHandler(err, _req, res, _next) {
   let error = err;
 
-  // Map common Mongoose errors to clean ApiErrors.
-  if (error?.name === 'CastError') {
+  // Map upload errors to clean 400s.
+  if (error?.name === 'MulterError') {
+    error = ApiError.badRequest(
+      error.code === 'LIMIT_FILE_SIZE' ? 'Image is too large (maximum 5MB).' : `Upload error: ${error.message}`
+    );
+  } else if (typeof error?.message === 'string' && error.message.includes('images are allowed')) {
+    error = ApiError.badRequest(error.message);
+
+    // Map common Mongoose errors to clean ApiErrors.
+  } else if (error?.name === 'CastError') {
     error = ApiError.badRequest(`Invalid value for "${error.path}".`);
   } else if (error?.code === 11000) {
     const field = Object.keys(error.keyValue || {})[0] || 'field';

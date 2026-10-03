@@ -1,61 +1,126 @@
-import User from '../models/User.js';
+import User, { SELF_REGISTER_ROLES } from '../models/User.js';
+import { ApiError } from '../utils/ApiError.js';
 import { sendSuccess } from '../utils/response.js';
+import { publicUser } from '../utils/serializers.js';
+import { normalizeBdPhone } from '../utils/phone.js';
+import { signSession } from '../utils/session.js';
+import { createCustomToken, isFirebaseReady } from '../config/firebase.js';
 
-/** Shape a user document for API output (never expose internal/secret fields). */
-function publicUser(user) {
-  return {
-    id: user._id,
-    name: user.name,
-    phone: user.phone,
-    email: user.email,
-    role: user.role,
-    credits: user.credits,
-    planExpiresAt: user.planExpiresAt,
-    area: user.area,
-    referralCode: user.referralCode,
-    isBlocked: user.isBlocked,
-    createdAt: user.createdAt,
-  };
+/**
+ * POST /api/auth/register
+ * Requires a valid Firebase ID token (the client completed phone OTP).
+ * The phone number is taken from the verified token - never from the body.
+ * The password is bcrypt-hashed before storage.
+ */
+export async function registerUser(req, res, next) {
+  try {
+    const { name, email, address, password, role } = req.body;
+
+    // Phone can come from a verified Firebase phone session (OTP path) OR,
+    // while OTP is disabled, directly from the request body (direct path).
+    const isFirebase = req.auth?.provider === 'firebase';
+    const phone = normalizeBdPhone(isFirebase ? req.auth.phone : req.body.phone);
+
+    if (!phone) {
+      return next(ApiError.badRequest('A valid Bangladeshi phone number is required.'));
+    }
+
+    // Synthetic, stable id for direct registrations so sessions still work.
+    const firebaseUid = isFirebase ? req.auth.uid : `bd-${phone.replace('+', '')}`;
+
+    const existing = await User.findOne({ $or: [{ firebaseUid }, { phone }] });
+    if (existing) {
+      return next(
+        ApiError.conflict('An account already exists for this phone number. Please login instead.')
+      );
+    }
+
+    const user = new User({
+      firebaseUid,
+      phone,
+      email: email || '',
+      name: name.trim(),
+      address: address.trim(),
+      role: SELF_REGISTER_ROLES.includes(role) ? role : 'user',
+      referralCode: User.generateReferralCode(),
+    });
+    await user.setPassword(password);
+    await user.save();
+
+    return sendSuccess(res, {
+      status: 201,
+      message: 'Registration successful. Please login.',
+      data: { user: publicUser(user) },
+    });
+  } catch (err) {
+    if (err?.code === 11000) {
+      return next(ApiError.conflict('An account already exists for this phone number.'));
+    }
+    return next(err);
+  }
+}
+
+/**
+ * POST /api/auth/login
+ * Phone + password login. On success returns a Firebase custom token which the
+ * client exchanges for a real Firebase session (keeps server ID-token security).
+ */
+export async function loginUser(req, res, next) {
+  try {
+    const phone = normalizeBdPhone(req.body.phone);
+    if (!phone) return next(ApiError.badRequest('Invalid phone number.'));
+
+    const user = await User.findOne({ phone }).select('+passwordHash');
+    const passwordOk = user && user.passwordHash ? await user.verifyPassword(req.body.password) : false;
+
+    // Generic message on purpose (avoids revealing which phone numbers exist).
+    if (!user || !passwordOk) {
+      return next(ApiError.unauthorized('Invalid phone number or password.'));
+    }
+    if (user.isBlocked) {
+      return next(ApiError.forbidden('Your account has been blocked.'));
+    }
+
+    // Prefer a Firebase session when Admin is configured; otherwise fall back to
+    // our own signed session token so password login works without Firebase.
+    if (isFirebaseReady()) {
+      const customToken = await createCustomToken(user.firebaseUid);
+      return sendSuccess(res, {
+        message: 'Login successful.',
+        data: { customToken, user: publicUser(user) },
+      });
+    }
+
+    const token = signSession(user);
+    return sendSuccess(res, {
+      message: 'Login successful.',
+      data: { token, user: publicUser(user) },
+    });
+  } catch (err) {
+    return next(err);
+  }
 }
 
 /**
  * POST /api/auth/sync
- * Called by the client right after Firebase phone OTP login.
- * Creates the local user on first call, otherwise fetches/updates it.
- * Role can never be self-escalated here (always 'user' on create).
+ * Returns the local account for the authenticated Firebase session.
+ * It no longer auto-creates accounts (registration is explicit via /register).
+ * Also lets an existing user update a few safe profile fields.
  */
 export async function syncUser(req, res, next) {
   try {
-    const { name, area, referredBy } = req.body;
-    const { uid, phone, email, name: firebaseName } = req.firebase;
-
-    let user = await User.findOne({ firebaseUid: uid });
-    let created = false;
+    const { name, area } = req.body;
+    const user = await User.findOne({ firebaseUid: req.auth.uid });
 
     if (!user) {
-      user = await User.create({
-        firebaseUid: uid,
-        phone: phone || '',
-        email: email || '',
-        name: name || firebaseName || '',
-        area: area || '',
-        referralCode: User.generateReferralCode(),
-        referredBy: referredBy || null,
-      });
-      created = true;
-    } else {
-      if (typeof name === 'string' && name.trim()) user.name = name.trim();
-      if (typeof area === 'string') user.area = area.trim();
-      if (!user.phone && phone) user.phone = phone;
-      if (!user.email && email) user.email = email;
-      await user.save();
+      return next(ApiError.notFound('No account found for this number. Please register first.'));
     }
 
-    return sendSuccess(res, {
-      status: created ? 201 : 200,
-      message: created ? 'Account created.' : 'Account synced.',
-      data: { user: publicUser(user), isNewUser: created },
-    });
+    if (typeof name === 'string' && name.trim()) user.name = name.trim();
+    if (typeof area === 'string') user.area = area.trim();
+    await user.save();
+
+    return sendSuccess(res, { message: 'Account synced.', data: { user: publicUser(user) } });
   } catch (err) {
     return next(err);
   }

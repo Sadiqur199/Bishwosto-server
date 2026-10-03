@@ -3,6 +3,7 @@ import app from './app.js';
 import { env, logStartupReport } from './config/env.js';
 import { connectDB } from './config/db.js';
 import { initFirebase } from './config/firebase.js';
+import { ensureSuperAdmin } from './services/superAdmin.js';
 import { logger } from './utils/logger.js';
 
 async function bootstrap() {
@@ -11,6 +12,9 @@ async function bootstrap() {
   // Both are safe to call even when keys are missing (demo mode).
   initFirebase();
   await connectDB();
+
+  // Create the super-admin account from env once the DB is available.
+  await ensureSuperAdmin();
 
   const server = http.createServer(app);
 

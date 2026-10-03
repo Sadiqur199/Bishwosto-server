@@ -1,3 +1,4 @@
+import dns from 'node:dns';
 import mongoose from 'mongoose';
 import { env, features } from './env.js';
 import { logger } from '../utils/logger.js';
@@ -14,6 +15,16 @@ export async function connectDB() {
   }
 
   mongoose.set('strictQuery', true);
+
+  // Apply the optional DNS override before resolving the mongodb+srv SRV record.
+  if (env.dnsServers.length) {
+    try {
+      dns.setServers(env.dnsServers);
+      logger.info(`Using DNS servers: ${env.dnsServers.join(', ')}`);
+    } catch (err) {
+      logger.warn(`Could not set DNS servers: ${err.message}`);
+    }
+  }
 
   try {
     const conn = await mongoose.connect(env.mongoUri, {

@@ -18,15 +18,21 @@ export function initFirebase() {
   }
 
   try {
-    admin.initializeApp({
-      credential: admin.credential.cert({
-        projectId: env.firebase.projectId,
-        clientEmail: env.firebase.clientEmail,
-        privateKey: env.firebase.privateKey,
-      }),
-    });
+    // Preferred: a downloaded service-account JSON file.
+    // Fallback: the three FIREBASE_* values pasted into .env.
+    const credential = env.firebase.serviceAccountPath
+      ? admin.credential.cert(env.firebase.serviceAccountPath)
+      : admin.credential.cert({
+          projectId: env.firebase.projectId,
+          clientEmail: env.firebase.clientEmail,
+          privateKey: env.firebase.privateKey,
+        });
+
+    admin.initializeApp({ credential });
     initialized = true;
-    logger.success('Firebase Admin initialized');
+    logger.success(
+      `Firebase Admin initialized (${env.firebase.serviceAccountPath ? 'service account file' : 'env vars'})`
+    );
     return true;
   } catch (err) {
     logger.error(`Firebase Admin init failed: ${err.message}`);
@@ -37,6 +43,14 @@ export function initFirebase() {
 /** Verify a Firebase ID token. Throws if Firebase is not configured. */
 export async function verifyIdToken(idToken) {
   return admin.auth().verifyIdToken(idToken);
+}
+
+/** Mint a Firebase custom token for a uid (used after phone+password login). */
+export async function createCustomToken(uid) {
+  if (!isFirebaseReady()) {
+    return `mock-custom-token-${uid}-${Date.now()}`;
+  }
+  return admin.auth().createCustomToken(uid);
 }
 
 export const isFirebaseReady = () => initialized;

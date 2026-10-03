@@ -5,6 +5,9 @@ node_modules/
 dist/
 build/
 
+# Uploaded files (profile photos + private NID images)
+uploads/
+
 # Environment / secrets (NEVER commit)
 .env
 .env.*

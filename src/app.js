@@ -7,6 +7,7 @@ import { ApiError } from './utils/ApiError.js';
 import { generalLimiter } from './middleware/rateLimit.js';
 import { notFound, errorHandler } from './middleware/error.js';
 import routes from './routes/index.js';
+import { PHOTO_DIR } from './services/storage.js';
 
 const app = express();
 
@@ -36,6 +37,19 @@ app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 if (!env.isProd) app.use(morgan('dev'));
+
+// Public profile photos only. NID images live in a separate private folder that
+// is NEVER served statically (admin signed URL only).
+app.use('/uploads/photos', express.static(PHOTO_DIR, { maxAge: '7d' }));
+
+// Friendly root so opening http://localhost:5000/ is not a confusing 404.
+app.get('/', (_req, res) => {
+  res.json({
+    success: true,
+    message: 'GhorKaj API is running.',
+    data: { api: '/api', health: '/api/health' },
+  });
+});
 
 // All API routes live under /api and share the general rate limiter.
 app.use('/api', generalLimiter, routes);

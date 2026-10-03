@@ -58,11 +58,50 @@ Get the Firebase Admin values from: Firebase Console → Project settings → **
 
 ## Endpoints (current)
 
-| Method | Endpoint         | Auth           | Notes                                                     |
-| ------ | ---------------- | -------------- | --------------------------------------------------------- |
-| GET    | `/api/health`    | none           | Liveness + DB/Firebase status                             |
-| POST   | `/api/auth/sync` | Firebase token | Create/fetch local user (`{ name?, area?, referredBy? }`) |
-| GET    | `/api/me`        | Firebase token | Current user's profile                                    |
+| Method | Endpoint             | Auth           | Notes                                                          |
+| ------ | -------------------- | -------------- | -------------------------------------------------------------- |
+| GET    | `/api/health`        | none           | Liveness + DB/Firebase status                                  |
+| POST   | `/api/auth/register` | optional token | Register (direct, or after phone OTP)                         |
+| POST   | `/api/auth/login`    | none           | Phone + password → `{ customToken }` or local `{ token }`      |
+| POST   | `/api/auth/sync`     | token          | Return/mildly update existing account                          |
+| GET    | `/api/me`            | token          | Current user's profile                                         |
+
+Passwords are bcrypt-hashed (`select: false`). Firebase Phone Auth has no native phone+password,
+so the server verifies the password and issues a Firebase **custom token**, or a signed local JWT
+when Firebase Admin is not configured.
+
+### Phase 3 — Workers
+
+| Method | Endpoint | Auth | Notes |
+| ------ | -------- | ---- | ----- |
+| GET | `/api/workers` | none | Public list + filters (never returns contact/nid) |
+| GET | `/api/workers/:id` | none | Public profile (contact only for unlocked users) |
+| PATCH | `/api/workers/:id/availability` | owner/agent/admin | Toggle available/busy |
+| POST | `/api/agent/workers` | agent/admin | Multipart add worker (`payload` JSON + `photo`/`nidFront`/`nidBack`) |
+| PUT | `/api/agent/workers/:id` | agent/admin | Update own worker |
+| GET | `/api/agent/workers` | agent/admin | List own workers |
+| GET/POST | `/api/worker/me` | worker/admin | Worker's own profile |
+| PATCH | `/api/worker/me/availability` | worker/admin | Toggle availability |
+| GET | `/api/admin/workers?status=` | admin | All workers (incl. contact + NID meta) |
+| PATCH | `/api/admin/workers/:id/verify\|reject\|suspend` | admin | Approval workflow |
+| GET | `/api/admin/workers/:id/nid` | admin | Signed NID image URLs (short-lived) |
+| GET | `/api/files/nid/:id/:side?exp=&sig=` | signed | Private NID image stream |
+| GET/PUT | `/api/admin/pricing` | admin | Pricing config |
+| GET | `/api/admin/stats` | admin | Dashboard stats |
+| GET | `/api/admin/audit-logs` | admin | Sensitive-action log |
+
+**Security:** worker `contact` and `nid` use `select: false`; NID numbers are AES-256-GCM
+encrypted (only last 4 digits stored in clear); NID images live in `server/uploads/nid` which is
+never served statically — admins get short-lived signed URLs and every view is audit-logged.
+
+### Seed
+
+```bash
+npm run seed
+```
+
+Creates the pricing config, a demo agent (`01711111111` / `agent123`) and 6 approved+verified
+demo workers.
 
 Response shape: `{ success, message, data }` on success and
 `{ success, message, error: { code, details } }` on error.

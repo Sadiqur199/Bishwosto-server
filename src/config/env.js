@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -6,6 +7,10 @@ dotenv.config();
 const isMissing = (value) => !value || value.trim() === '' || /<[^>]+>/.test(value);
 
 const rawFirebaseKey = process.env.FIREBASE_PRIVATE_KEY || '';
+
+// Optional: path to the downloaded service-account JSON (easiest setup method).
+const serviceAccountPath = process.env.GOOGLE_APPLICATION_CREDENTIALS || '';
+const serviceAccountFileExists = Boolean(serviceAccountPath) && fs.existsSync(serviceAccountPath);
 
 export const env = {
   nodeEnv: process.env.NODE_ENV || 'development',
@@ -20,11 +25,30 @@ export const env = {
 
   mongoUri: process.env.MONGO_URI || '',
 
+  // Optional DNS override. Some ISPs/routers refuse SRV lookups needed by
+  // mongodb+srv:// URIs; set e.g. DNS_SERVERS=8.8.8.8,1.1.1.1 to fix that.
+  dnsServers: (process.env.DNS_SERVERS || '')
+    .split(',')
+    .map((server) => server.trim())
+    .filter(Boolean),
+
   firebase: {
     projectId: process.env.FIREBASE_PROJECT_ID || '',
     clientEmail: process.env.FIREBASE_CLIENT_EMAIL || '',
     // Service account JSON stores newlines as "\n" - convert back to real newlines.
     privateKey: rawFirebaseKey.replace(/\\n/g, '\n'),
+    // Alternative: path to the downloaded service-account .json file.
+    serviceAccountPath: serviceAccountFileExists ? serviceAccountPath : '',
+  },
+
+  // Secret for local (non-Firebase) sessions. Change this in production!
+  jwtSecret: process.env.JWT_SECRET || 'ghorkaj-dev-secret-change-me',
+
+  // Bootstrap account. On startup (when the DB is connected) if this phone has
+  // no account it is created with the 'admin' role. Admins never self-register.
+  superAdmin: {
+    phone: process.env.SUPER_ADMIN_PHONE || '',
+    password: process.env.SUPER_ADMIN_PASSWORD || '',
   },
 
   nidEncryptionKey: process.env.NID_ENCRYPTION_KEY || '',
@@ -45,9 +69,10 @@ export const env = {
 export const features = {
   mongoConfigured: !isMissing(process.env.MONGO_URI),
   firebaseConfigured:
-    !isMissing(process.env.FIREBASE_PROJECT_ID) &&
-    !isMissing(process.env.FIREBASE_CLIENT_EMAIL) &&
-    !isMissing(rawFirebaseKey),
+    serviceAccountFileExists ||
+    (!isMissing(process.env.FIREBASE_PROJECT_ID) &&
+      !isMissing(process.env.FIREBASE_CLIENT_EMAIL) &&
+      !isMissing(rawFirebaseKey)),
   nidEncryptionConfigured:
     !isMissing(process.env.NID_ENCRYPTION_KEY) && process.env.NID_ENCRYPTION_KEY.length === 64,
 };
