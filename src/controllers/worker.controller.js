@@ -3,6 +3,7 @@ import Worker, { AVAILABILITY } from '../models/Worker.js';
 import { ApiError } from '../utils/ApiError.js';
 import { sendSuccess } from '../utils/response.js';
 import { publicWorker } from '../utils/serializers.js';
+import { isUnlocked } from '../services/unlock.js';
 
 const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -88,16 +89,19 @@ export async function getWorker(req, res, next) {
   try {
     if (!mongoose.isValidObjectId(req.params.id)) throw ApiError.notFound('Worker not found.');
 
-    const worker = await Worker.findOne({ _id: req.params.id, status: 'approved' });
-    if (!worker) throw ApiError.notFound('Worker not found.');
+    // Decide unlock status server-side. Only then is the private contact loaded.
+    const unlocked = req.user ? await isUnlocked(req.user._id, req.params.id) : false;
 
-    // Phase 5 will check the Unlock collection here.
-    const unlocked = false;
+    const query = Worker.findOne({ _id: req.params.id, status: 'approved' });
+    if (unlocked) query.select('+contact');
+    const worker = await query;
+    if (!worker) throw ApiError.notFound('Worker not found.');
 
     return sendSuccess(res, {
       message: 'Worker profile',
       data: {
-        worker: publicWorker(worker),
+        // Contact is passed through ONLY for unlocked users.
+        worker: publicWorker(worker, { contact: unlocked ? worker.contact : null }),
         unlocked,
         reviewsSummary: { avg: worker.ratingAvg, count: worker.ratingCount },
       },

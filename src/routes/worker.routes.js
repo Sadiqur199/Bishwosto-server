@@ -7,6 +7,7 @@ import {
   createReview,
 } from '../controllers/review.controller.js';
 import { authenticate, loadUser } from '../middleware/auth.js';
+import { optionalAuth } from '../middleware/optionalAuth.js';
 import { requireDb } from '../middleware/requireDb.js';
 import { validate } from '../middleware/validate.js';
 import { strictLimiter } from '../middleware/rateLimit.js';
@@ -26,7 +27,8 @@ const router = Router();
 
 // Public (contact/nid are never returned here).
 router.get('/', strictLimiter, requireDb, listWorkers);
-router.get('/:id', requireDb, getWorker);
+// Optional auth so unlocked users get the contact on the profile.
+router.get('/:id', requireDb, optionalAuth, getWorker);
 
 // Reviews (Phase 4): public read, unlocked-user write.
 router.get('/:workerId/reviews', requireDb, getWorkerReviews);
