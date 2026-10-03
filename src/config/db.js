@@ -16,8 +16,8 @@ export async function connectDB() {
 
   mongoose.set('strictQuery', true);
 
-  // Apply the optional DNS override before resolving the mongodb+srv SRV record.
-  if (env.dnsServers.length) {
+  // Vercel functions should use the platform resolver for Atlas SRV records.
+  if (env.dnsServers.length && process.env.VERCEL !== '1') {
     try {
       dns.setServers(env.dnsServers);
       logger.info(`Using DNS servers: ${env.dnsServers.join(', ')}`);
