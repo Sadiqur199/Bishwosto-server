@@ -6,6 +6,10 @@ import workerRoutes from './worker.routes.js';
 import agentRoutes from './agent.routes.js';
 import workerSelfRoutes from './workerSelf.routes.js';
 import filesRoutes from './files.routes.js';
+import reviewRoutes from './review.routes.js';
+import requestRoutes from './request.routes.js';
+import reportRoutes from './report.routes.js';
+import categoryRoutes from './category.routes.js';
 import { isDbConnected } from '../config/db.js';
 import { isFirebaseReady } from '../config/firebase.js';
 
@@ -17,7 +21,16 @@ router.get('/', (_req, res) => {
     success: true,
     message: 'GhorKaj API.',
     data: {
-      endpoints: ['/api/health', '/api/auth/register', '/api/auth/login', '/api/me'],
+      endpoints: [
+        '/api/health',
+        '/api/auth/register',
+        '/api/auth/login',
+        '/api/me',
+        '/api/workers',
+        '/api/categories',
+        '/api/requests',
+        '/api/reports',
+      ],
     },
   });
 });
@@ -39,9 +52,13 @@ router.get('/health', (_req, res) => {
 router.use('/auth', authRoutes);
 router.use('/me', meRoutes);
 router.use('/workers', workerRoutes);
+router.use('/reviews', reviewRoutes);
 router.use('/worker', workerSelfRoutes);
 router.use('/agent', agentRoutes);
 router.use('/admin', adminRoutes);
 router.use('/files', filesRoutes);
+router.use('/requests', requestRoutes);
+router.use('/reports', reportRoutes);
+router.use('/categories', categoryRoutes);
 
 export default router;

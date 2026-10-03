@@ -17,6 +17,18 @@ import {
   updatePricing,
   getStats,
   listAuditLogs,
+  listReviews,
+  hideReview,
+  unhideReview,
+  listReports,
+  updateReport,
+  toggleUserBlock,
+  setUserRole,
+  listPayments,
+  refundPayment,
+  listWorkerRequests,
+  updateWorkerRequest,
+  listAgents,
 } from '../controllers/admin.controller.js';
 import { authenticate, loadUser } from '../middleware/auth.js';
 import { requireRole } from '../middleware/role.js';
@@ -60,6 +72,12 @@ router.get('/users/kyc', listUserKyc);
 router.get('/users/:id/nid', getUserNid);
 router.patch('/users/:id/verify-nid', verifyUserNid);
 router.patch('/users/:id/reject-nid', rejectUserNid);
+router.patch('/users/:id/block', toggleUserBlock);
+router.patch(
+  '/users/:id/role',
+  validate(z.object({ role: z.enum(['user', 'worker', 'agent', 'admin']) }).strict()),
+  setUserRole
+);
 
 // Workers: approval workflow
 router.get('/workers', listWorkers);
@@ -68,6 +86,26 @@ router.patch('/workers/:id/verify', verifyWorker);
 router.patch('/workers/:id/reject', rejectWorker);
 router.patch('/workers/:id/suspend', suspendWorker);
 router.get('/workers/:id/nid', getWorkerNid);
+
+// Reviews moderation
+router.get('/reviews', listReviews);
+router.patch('/reviews/:id/hide', hideReview);
+router.patch('/reviews/:id/unhide', unhideReview);
+
+// Reports
+router.get('/reports', listReports);
+router.patch('/reports/:id', updateReport);
+
+// Payments & refunds
+router.get('/payments', listPayments);
+router.post('/refund/:paymentId', refundPayment);
+
+// Worker requests queue
+router.get('/requests', listWorkerRequests);
+router.patch('/requests/:id', updateWorkerRequest);
+
+// Agents
+router.get('/agents', listAgents);
 
 // Pricing
 router.get('/pricing', getPricing);

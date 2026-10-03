@@ -13,11 +13,19 @@ async function run() {
   // Remove any worker that is not one of the 6 official demo workers.
   const res = await mongoose.connection.collection('workers').deleteMany({ name: { $nin: KEEP } });
   // Remove test accounts created during verification (keep super admin + demo agent).
-  const TEST_PHONES = ['+8801777777777', '+8801766666666'];
+  const TEST_PHONES = ['+8801777777777', '+8801766666666', '+8801755550001'];
   const users = await mongoose.connection
     .collection('users')
     .deleteMany({ phone: { $in: TEST_PHONES } });
   logger.info(`Deleted ${users.deletedCount} test account(s).`);
+
+  // Remove test reviews / reports / requests.
+  const reviews = await mongoose.connection.collection('reviews').deleteMany({});
+  const reports = await mongoose.connection.collection('reports').deleteMany({});
+  const requests = await mongoose.connection.collection('requests').deleteMany({});
+  logger.info(
+    `Deleted ${reviews.deletedCount} review(s), ${reports.deletedCount} report(s), ${requests.deletedCount} request(s).`
+  );
   const total = await mongoose.connection.collection('workers').countDocuments();
   logger.success(`Deleted ${res.deletedCount} test worker(s). Remaining: ${total}.`);
   await mongoose.disconnect();
