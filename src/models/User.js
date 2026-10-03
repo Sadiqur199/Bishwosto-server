@@ -16,6 +16,24 @@ const userSchema = new mongoose.Schema(
     // Password login (optional). Never returned by queries unless explicitly selected.
     passwordHash: { type: String, select: false },
 
+    // Profile photo (public when the person lists as a worker).
+    photoUrl: { type: String, default: '' },
+
+    // ---- PRIVATE: NID given at registration. select:false, never public. ----
+    nid: {
+      type: {
+        numberEncrypted: { type: String, default: '' },
+        numberLast4: { type: String, default: '' },
+        frontImagePath: { type: String, default: '' },
+        backImagePath: { type: String, default: '' },
+        status: { type: String, enum: ['pending', 'verified', 'rejected'], default: 'pending' },
+        verifiedAt: { type: Date, default: null },
+        verifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+      },
+      select: false,
+      default: undefined,
+    },
+
     address: { type: String, trim: true, maxlength: 200, default: '' },
     role: { type: String, enum: USER_ROLES, default: 'user', index: true },
     credits: { type: Number, default: 0, min: 0 },

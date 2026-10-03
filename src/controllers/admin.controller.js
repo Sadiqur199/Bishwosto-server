@@ -5,11 +5,11 @@ import Pricing from '../models/Pricing.js';
 import AuditLog from '../models/AuditLog.js';
 import { ApiError } from '../utils/ApiError.js';
 import { sendSuccess } from '../utils/response.js';
-import { publicUser, staffWorker } from '../utils/serializers.js';
+import { publicUser, staffUser, staffWorker } from '../utils/serializers.js';
 import { nidImagePath } from '../services/storage.js';
+import { signNidToken } from '../utils/nidToken.js';
 import fs from 'node:fs';
 import { normalizeBdPhone } from '../utils/phone.js';
-import { signNidToken } from '../utils/nidToken.js';
 import { computeTrustScore } from '../services/workerService.js';
 
 /* ----------------------------- Users ----------------------------- */
@@ -63,6 +63,99 @@ export async function listUsers(req, res, next) {
       message: 'Users',
       data: { users: items.map(publicUser) },
       meta: { total, page, limit },
+    });
+  } catch (err) {
+    return next(err);
+  }
+}
+
+/** GET /api/admin/users/kyc?status=pending - accounts awaiting NID verification. */
+export async function listUserKyc(req, res, next) {
+  try {
+    const status = req.query.status || 'pending';
+    const filter = { 'nid.status': status, role: { $ne: 'admin' } };
+    const users = await User.find(filter).select('+nid').sort({ createdAt: -1 }).limit(100);
+    return sendSuccess(res, { message: 'KYC queue', data: { users: users.map(staffUser) } });
+  } catch (err) {
+    return next(err);
+  }
+}
+
+/** PATCH /api/admin/users/:id/verify-nid  (or /reject-nid) */
+async function changeNidStatus(req, res, next, status) {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) throw ApiError.notFound('User not found.');
+
+    const user = await User.findById(req.params.id).select('+nid');
+    if (!user) throw ApiError.notFound('User not found.');
+    if (!user.nid) throw ApiError.badRequest('This user has no NID on file.');
+
+    user.nid.status = status;
+    if (status === 'verified') {
+      user.nid.verifiedAt = new Date();
+      user.nid.verifiedBy = req.user._id;
+    } else {
+      user.nid.verifiedAt = null;
+      user.nid.verifiedBy = null;
+    }
+    await user.save();
+
+    // Sync the badge to any worker profile this account owns.
+    if (status === 'verified') {
+      await Worker.updateMany({ ownerUserId: user._id }, { $set: { isVerified: true } });
+    }
+
+    await AuditLog.create({
+      actorId: req.user._id,
+      action: `user.nid.${status}`,
+      targetType: 'User',
+      targetId: user._id,
+      ip: req.ip,
+    });
+
+    return sendSuccess(res, { message: `NID ${status}.`, data: { user: staffUser(user) } });
+  } catch (err) {
+    return next(err);
+  }
+}
+
+export const verifyUserNid = (req, res, next) => changeNidStatus(req, res, next, 'verified');
+export const rejectUserNid = (req, res, next) => changeNidStatus(req, res, next, 'rejected');
+
+/**
+ * GET /api/admin/users/:id/nid
+ * Short-lived signed URLs for a user's private NID images + audit log.
+ */
+export async function getUserNid(req, res, next) {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) throw ApiError.notFound('User not found.');
+
+    const user = await User.findById(req.params.id).select('+nid');
+    if (!user) throw ApiError.notFound('User not found.');
+    if (!user.nid) throw ApiError.notFound('No NID on file.');
+
+    const build = (key, side) => {
+      if (!key || !fs.existsSync(nidImagePath(key))) return null;
+      const { exp, sig, ttl } = signNidToken(`user:${user._id}`, side);
+      return `/api/files/user-nid/${user._id}/${side}?exp=${exp}&sig=${sig}&t=${ttl}`;
+    };
+
+    await AuditLog.create({
+      actorId: req.user._id,
+      action: 'user.nid.view',
+      targetType: 'User',
+      targetId: user._id,
+      ip: req.ip,
+    });
+
+    return sendSuccess(res, {
+      message: 'Signed NID URLs (valid ~5 minutes).',
+      data: {
+        status: user.nid.status || 'pending',
+        last4: user.nid.numberLast4 || '',
+        frontUrl: build(user.nid.frontImagePath, 'front'),
+        backUrl: build(user.nid.backImagePath, 'back'),
+      },
     });
   } catch (err) {
     return next(err);

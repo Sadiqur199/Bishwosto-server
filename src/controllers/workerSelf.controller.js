@@ -1,4 +1,5 @@
 import Worker, { AVAILABILITY } from '../models/Worker.js';
+import User from '../models/User.js';
 import { ApiError } from '../utils/ApiError.js';
 import { sendSuccess } from '../utils/response.js';
 import { staffWorker, publicWorker } from '../utils/serializers.js';
@@ -13,6 +14,28 @@ function contactDefaults(user) {
     whatsapp: '',
     referenceName: '',
     referencePhone: '',
+  };
+}
+
+/**
+ * NID + photo to inherit into a worker profile.
+ * A verified account NID makes the worker auto-verified; a pending one is
+ * carried over so it can be verified later (no re-upload needed).
+ */
+function accountIdentity(user) {
+  return {
+    photoUrl: user.photoUrl || '',
+    nid: user.nid
+      ? {
+          numberEncrypted: user.nid.numberEncrypted || '',
+          numberLast4: user.nid.numberLast4 || '',
+          frontImagePath: user.nid.frontImagePath || '',
+          backImagePath: user.nid.backImagePath || '',
+          nidVerified: user.nid.status === 'verified',
+          verifiedAt: user.nid.status === 'verified' ? user.nid.verifiedAt : null,
+          verifiedBy: user.nid.status === 'verified' ? user.nid.verifiedBy : null,
+        }
+      : null,
   };
 }
 
@@ -38,6 +61,9 @@ export async function createMyProfile(req, res, next) {
     const existing = await Worker.findOne({ ownerUserId: req.user._id });
     if (existing) throw ApiError.conflict('You already have a profile.');
 
+    // Account NID must be loaded explicitly (select:false).
+    const account = await User.findById(req.user._id).select('+nid');
+
     const worker = await createWorker({
       payload: req.body.payload,
       files: req.files,
@@ -46,6 +72,8 @@ export async function createMyProfile(req, res, next) {
       status: 'pending',
       // Auto-fill the worker's contact from the account they registered with.
       contactDefaults: contactDefaults(req.user),
+      // Inherit the account's photo + verified/pending NID (no re-upload).
+      identity: accountIdentity(account),
     });
 
     return sendSuccess(res, {

@@ -1,4 +1,8 @@
-/** Shape a user document for API output (never expose passwordHash). */
+/**
+ * Shape a user document for API output.
+ * Never exposes passwordHash, the NID number, or NID images.
+ * `nidStatus` is safe to show (e.g. a "verification pending" notice).
+ */
 export function publicUser(user) {
   return {
     id: user._id,
@@ -6,13 +10,32 @@ export function publicUser(user) {
     phone: user.phone,
     email: user.email,
     address: user.address,
+    photoUrl: user.photoUrl || '',
     role: user.role,
     credits: user.credits,
     planExpiresAt: user.planExpiresAt,
     area: user.area,
     referralCode: user.referralCode,
+    nidStatus: user.nid?.status || 'pending',
     isBlocked: user.isBlocked,
     createdAt: user.createdAt,
+  };
+}
+
+/**
+ * User shape for staff/admin - includes NID metadata (status, last4, image flags)
+ * but never the encrypted number or a usable image URL.
+ */
+export function staffUser(user) {
+  return {
+    ...publicUser(user),
+    nid: {
+      status: user.nid?.status || 'pending',
+      last4: user.nid?.numberLast4 || '',
+      hasFront: Boolean(user.nid?.frontImagePath),
+      hasBack: Boolean(user.nid?.backImagePath),
+      verifiedAt: user.nid?.verifiedAt || null,
+    },
   };
 }
 

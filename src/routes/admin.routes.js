@@ -3,6 +3,10 @@ import { z } from 'zod';
 import {
   createUser,
   listUsers,
+  listUserKyc,
+  verifyUserNid,
+  rejectUserNid,
+  getUserNid,
   listWorkers,
   getWorkerDetail,
   verifyWorker,
@@ -50,6 +54,12 @@ router.use(authenticate, requireDb, loadUser, requireRole('admin'));
 // Users
 router.get('/users', listUsers);
 router.post('/users', validate(createUserSchema), createUser);
+
+// User KYC (NID given at registration)
+router.get('/users/kyc', listUserKyc);
+router.get('/users/:id/nid', getUserNid);
+router.patch('/users/:id/verify-nid', verifyUserNid);
+router.patch('/users/:id/reject-nid', rejectUserNid);
 
 // Workers: approval workflow
 router.get('/workers', listWorkers);

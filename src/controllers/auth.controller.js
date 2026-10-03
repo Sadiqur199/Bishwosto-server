@@ -4,17 +4,25 @@ import { sendSuccess } from '../utils/response.js';
 import { publicUser } from '../utils/serializers.js';
 import { normalizeBdPhone } from '../utils/phone.js';
 import { signSession } from '../utils/session.js';
+import { encryptNid, nidLast4 } from '../utils/nidCrypto.js';
+import { savePhoto, saveNidImage } from '../services/storage.js';
 import { createCustomToken, isFirebaseReady } from '../config/firebase.js';
 
 /**
  * POST /api/auth/register
- * Requires a valid Firebase ID token (the client completed phone OTP).
- * The phone number is taken from the verified token - never from the body.
- * The password is bcrypt-hashed before storage.
+ * Multipart: profile fields + optional `photo`, `nidFront`, `nidBack` images.
+ * Phone comes from the verified Firebase OTP session when present, else the body.
+ * NID is required (number and/or documents) and stored encrypted + private.
  */
 export async function registerUser(req, res, next) {
   try {
-    const { name, email, address, password, role } = req.body;
+    // A JSON body arrives as text fields; multipart arrives in req.body too.
+    const { name, email, address, password, role, nidNumber, consent } = req.body;
+
+    const agreed = consent === true || consent === 'true';
+    if (!agreed) {
+      return next(ApiError.badRequest('You must accept the Privacy Policy and Terms.'));
+    }
 
     // Phone can come from a verified Firebase phone session (OTP path) OR,
     // while OTP is disabled, directly from the request body (direct path).
@@ -35,14 +43,34 @@ export async function registerUser(req, res, next) {
       );
     }
 
+    const photo = req.files?.photo?.[0];
+    const nidFront = req.files?.nidFront?.[0];
+    const nidBack = req.files?.nidBack?.[0];
+
+    // NID is mandatory: require a number and at least the front image.
+    if (!nidNumber || String(nidNumber).trim().length < 4) {
+      return next(ApiError.badRequest('NID number is required.'));
+    }
+    if (!nidFront) {
+      return next(ApiError.badRequest('NID front image is required.'));
+    }
+
     const user = new User({
       firebaseUid,
       phone,
       email: email || '',
-      name: name.trim(),
-      address: address.trim(),
+      name: String(name).trim(),
+      address: String(address).trim(),
       role: SELF_REGISTER_ROLES.includes(role) ? role : 'user',
       referralCode: User.generateReferralCode(),
+      photoUrl: photo ? savePhoto(photo) : '',
+      nid: {
+        numberEncrypted: encryptNid(String(nidNumber).trim()),
+        numberLast4: nidLast4(nidNumber),
+        frontImagePath: nidFront ? saveNidImage(nidFront) : '',
+        backImagePath: nidBack ? saveNidImage(nidBack) : '',
+        status: 'pending',
+      },
     });
     await user.setPassword(password);
     await user.save();

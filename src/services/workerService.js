@@ -117,6 +117,7 @@ export async function createWorker({
   ownerUserId = null,
   status = 'pending',
   contactDefaults = {},
+  identity = null,
 }) {
   const data = parseWorkerPayload(payload);
   if (!data.consentGiven) {
@@ -138,16 +139,35 @@ export async function createWorker({
     createdBy,
     ownerUserId,
     status,
-    photoUrl: photo ? savePhoto(photo) : '',
+    // Prefer a freshly uploaded photo, else inherit the account photo.
+    photoUrl: photo ? savePhoto(photo) : identity?.photoUrl || '',
     consentGiven: true,
   };
 
+  // Prefer freshly provided NID; otherwise inherit the account's NID (if any).
   if (data.nidNumber || nidFront || nidBack) {
     doc.nid = {
       numberEncrypted: data.nidNumber ? encryptNid(data.nidNumber) : '',
       numberLast4: data.nidNumber ? nidLast4(data.nidNumber) : '',
       frontImagePath: nidFront ? saveNidImage(nidFront) : '',
       backImagePath: nidBack ? saveNidImage(nidBack) : '',
+    };
+  } else if (identity?.nid) {
+    doc.nid = {
+      numberEncrypted: identity.nid.numberEncrypted || '',
+      numberLast4: identity.nid.numberLast4 || '',
+      frontImagePath: identity.nid.frontImagePath || '',
+      backImagePath: identity.nid.backImagePath || '',
+    };
+  }
+
+  // A verified account NID makes the worker auto-verified.
+  if (identity?.nid?.nidVerified) {
+    doc.isVerified = true;
+    doc.nid = {
+      ...(doc.nid || {}),
+      verifiedAt: identity.nid.verifiedAt || new Date(),
+      verifiedBy: identity.nid.verifiedBy || createdBy,
     };
   }
 
